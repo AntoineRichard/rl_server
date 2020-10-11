@@ -1,0 +1,12 @@
+<launch>
+  <!-- STARTS GAZEBO AND SIMULATION -->
+  <!--include file="$(find heron_gazebo)/launch/heron_world.launch"/-->
+  <!-- STARTS SERVER -->
+  <node pkg="rl_server" name="bridge_server" type="bridge_server.py" output="screen">
+       <param name="service_name" type="string" value="/gazebo/set_model_state" /> 
+       <param name="path_to_pose" type="string" value="$(find rl_server)/new_track_clockwise.npy" /> 
+  </node>
+  <!-- STARTS REWARD AND AGENT'S VIEW -->
+  <!--include file="$(find reward_generator)/launch/reward_generator.launch"-->
+  <!-- STARTS AGENT -->
+</launch>

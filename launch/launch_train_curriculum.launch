@@ -1,0 +1,6 @@
+<launch>
+  <include file="$(find heron_gazebo)/launch/heron_world.launch"/>
+  <include file="$(find reward_generator)/launch/reward_generator.launch"/>
+  <include file="$(find cmd_smoother)/launch/smooth.launch"/>
+  <include file="$(find rl_server)/launch/start_server_curriculum.launch"/>
+</launch>
