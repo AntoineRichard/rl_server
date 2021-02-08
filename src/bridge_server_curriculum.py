@@ -10,8 +10,8 @@ from rl_server.msg import Episode
 from gazebo_msgs.msg import ModelState 
 from gazebo_msgs.srv import SetModelState
 from heron_msgs.msg import Drive
-from uuv_world_ros_plugins_msgs.srv import SetCurrentVelocity
-from uuv_gazebo_ros_plugins_msgs.srv import SetFloat
+#from uuv_world_ros_plugins_msgs.srv import SetCurrentVelocity
+#from uuv_gazebo_ros_plugins_msgs.srv import SetFloat
 import sampling_helper as sh
 
 class Server:
@@ -22,16 +22,16 @@ class Server:
         self.sim_ok_pub_ = rospy.Publisher('/server/sim_ok', Bool, queue_size=1)  
         rospy.Subscriber('/agent/is_done', Bool, self.doneCallback)
         self.spawn_service_ = rospy.get_param('~spawn_service','')
-        self.current_service_ = rospy.get_param('~current_service','')
-        self.damping_service_ = rospy.get_param('~damping_service','')
+        #self.current_service_ = rospy.get_param('~current_service','')
+        #self.damping_service_ = rospy.get_param('~damping_service','')
         #self.density_service_ = rospy.get_param('~density_service','')
         #self.weight_service_ = rospy.get_param('~weight_service','')
         self.path_to_data_ = rospy.get_param('~path_to_pose','blabla')
         self.drive = Drive()
         self.drive.left=0
         self.drive.right=0
-        self.current_srv = SetCurrentVelocity()
-        self.damping_srv = SetFloat()
+        #self.current_srv = SetCurrentVelocity()
+        #self.damping_srv = SetFloat()
         # SERVICE
         self.msg_ = ModelState()
         self.msg_.model_name='heron'
@@ -51,11 +51,11 @@ class Server:
 
         # SERVER
         self._host = 'localhost'
-        self._port = 8088
+        self._port = 8080
         self._app = Bottle()
         self._route()
         # VARS
-        self.expected_keys = ['random', 'steps', 'repeat', 'discount', 'training'] #'completion_rate', 'episode number'
+        self.expected_keys = ['random', 'steps', 'repeat', 'discount', 'training', 'current_step', 'reward'] #'completion_rate', 'episode number'
         self.check_rate_ = 2.0
         self.op_OK_ = False
         #self.poses = np.load(self.path_to_data_)[1000:]
@@ -69,17 +69,17 @@ class Server:
         self.damping = np.linspace(1.5, 3., 20)
 
         # Adaptive CL function
-        self.diff_function = "fixed_order_cl"                       # fixed_order_cl # adaptive_reward_cl # adaptive_difficulty_cl #
-
+        self.diff_function = "adaptative_reward_cl"                       # fixed_order_cl # adaptive_reward_cl # adaptive_difficulty_cl #
+        self.current_step = 0
         # fixed_order_cl
-        self.max_step = 1e6                                         # Maximum number of steps for one training
+        self.max_step = 5e5                                         # Maximum number of steps for one training
 
         # reward estimation
         self.r_est = 0.                                             # estimated reward
         self.alpha = 0.2                                            # alpha factor from exponential moving average (EMA)
 
         # adaptive_reward_cl
-        self.max_reward = 3800.
+        self.max_reward = 937.5
         self.min_reward = 0.
 
         # adaptive_difficulty_cl
@@ -92,7 +92,8 @@ class Server:
 
         self.sig_t = 0.01                                           # ~3% change
         self.sig_l = 0.03                                           # ~10% change
-
+        self.difficulty_history = []
+        self.difficulty_history_name = '/home/gpu_user/nvme-storage/antoine/DREAMER/kf_ws/adaptative_reward_cl.txt'
 
     def _route(self):
         self._app.route('/toServer', method="POST", callback=self._onPost)
@@ -114,6 +115,7 @@ class Server:
         ep.random_agent = (req['random'] == 1)
         ep.discount = req['discount']
         ep.training = (req['training'] == 1)
+        self.current_step = req['current_step']
         rospy.wait_for_service(self.spawn_service_)
 
 
@@ -147,7 +149,10 @@ class Server:
                                                                            sigma_large=self.sig_l)
             list_difficulties = [state[0] for state in self.list_states]
 
-
+        self.difficulty_history.append(list_difficulties)
+        with open(self.difficulty_history_name, 'w') as f:
+            for item in self.difficulty_history:
+                f.write("%s\n" % item)
         # Start episode
         for i in range(req['repeat']+1):
             self.op_OK_ = False
@@ -174,21 +179,21 @@ class Server:
             rospy.sleep(1.0)
             self.episode_manager_pub_.publish(ep)
             rospy.sleep(1.0)
-            damping = np.random.choice(self.damping, replace=True)
-            velocity = np.random.choice(self.current, replace=True)
-            horizontal_angle = np.random.rand(1)[0]*2*np.pi
-            try:
-                set_current = rospy.ServiceProxy(self.current_service_, SetCurrentVelocity)
-                resp = set_current(velocity, horizontal_angle, 0)
-                print("refresh with current velocity of:"+str(velocity)+" with angle:"+str(horizontal_angle))
-            except rospy.ServiceException, e:
-                print "Service call failed: %s" % e
-            try:
-                set_damping = rospy.ServiceProxy(self.damping_service_, SetFloat)
-                resp = set_damping(damping)
-                print("refresh with damping scale of: "+str(damping))
-            except rospy.ServiceException, e:
-                print "Service call failed: %s" % e
+            #damping = np.random.choice(self.damping, replace=True)
+            #velocity = np.random.choice(self.current, replace=True)
+            #horizontal_angle = np.random.rand(1)[0]*2*np.pi
+            #try:
+            #    set_current = rospy.ServiceProxy(self.current_service_, SetCurrentVelocity)
+            #    resp = set_current(velocity, horizontal_angle, 0)
+            #    print("refresh with current velocity of:"+str(velocity)+" with angle:"+str(horizontal_angle))
+            #except rospy.ServiceException, e:
+            #    print "Service call failed: %s" % e
+            #try:
+            #    set_damping = rospy.ServiceProxy(self.damping_service_, SetFloat)
+            #    resp = set_damping(damping)
+            #    print("refresh with damping scale of: "+str(damping))
+            #except rospy.ServiceException, e:
+            #    print "Service call failed: %s" % e
             #try:
             #    set_weight = rospy.ServiceProxy(self.weight_service_, self.weight)
             #except rospy.ServiceException, e:
@@ -198,30 +203,30 @@ class Server:
             #except rospy.ServiceException, e:
             #    print "Service call failed: %s" % e
 
-            # self.sim_ok_pub_.publish(True)
-            # while ((not self.op_OK_) and (not rospy.is_shutdown())):
-            #     #print('sleeping')
-            #     rospy.sleep(self.check_rate_)
-            # self.action_pub_.publish(self.drive)
+            self.sim_ok_pub_.publish(True)
+            while ((not self.op_OK_) and (not rospy.is_shutdown())):
+                #print('sleeping')
+                rospy.sleep(self.check_rate_)
+            self.action_pub_.publish(self.drive)
             time.sleep(4)
-            try:
-                set_current = rospy.ServiceProxy(self.current_service_, SetCurrentVelocity)
-                resp = set_current(0, 0, 0)
-                print("refresh with current velocity of: 0 with angle: 0")
-            except rospy.ServiceException, e:
-                print "Service call failed: %s" % e
+            #try:
+            #    set_current = rospy.ServiceProxy(self.current_service_, SetCurrentVelocity)
+            #    resp = set_current(0, 0, 0)
+            #    print("refresh with current velocity of: 0 with angle: 0")
+            #except rospy.ServiceException, e:
+            #    print "Service call failed: %s" % e
             try:
                 set_state = rospy.ServiceProxy(self.spawn_service_, SetModelState)
                 resp = set_state(self.msg_)
                 print("0 velocity refresh")
             except rospy.ServiceException, e:
                 print "Service call failed: %s" % e
-            try:
-                set_current = rospy.ServiceProxy(self.current_service_, SetCurrentVelocity)
-                resp = set_current(0, 0, 0)
-                print("refresh with current velocity of: 0 with angle: 0")
-            except rospy.ServiceException, e:
-                print "Service call failed: %s" % e
+            #try:
+            #    set_current = rospy.ServiceProxy(self.current_service_, SetCurrentVelocity)
+            #    resp = set_current(0, 0, 0)
+            #    print("refresh with current velocity of: 0 with angle: 0")
+            #except rospy.ServiceException, e:
+            #    print "Service call failed: %s" % e
         return 'Done'
 
 if __name__ == "__main__":
