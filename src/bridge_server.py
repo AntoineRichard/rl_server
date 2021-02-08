@@ -46,7 +46,7 @@ class Server:
         self._app = Bottle()
         self._route()
         # VARS
-        self.expected_keys = ['random', 'steps', 'repeat', 'discount', 'training']
+        self.expected_keys = ['random', 'steps', 'repeat', 'discount', 'training', 'current_step', 'reward']
         self.check_rate_ = 2.0
         self.op_OK_ = False
         self.poses = np.load(self.path_to_data_)[1000:]
